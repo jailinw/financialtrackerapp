@@ -9,9 +9,30 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+// decode JWT expiration
+function getTokenExpiration(token: string): number | null {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    return payload.exp ? payload.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setTokenState] = useState<string | null>(() => {
-    return localStorage.getItem("token");
+    const stored = localStorage.getItem("token");
+
+    if (!stored) return null;
+
+    const exp = getTokenExpiration(stored);
+
+    if (exp && Date.now() > exp) {
+      localStorage.removeItem("token");
+      return null;
+    }
+
+    return stored;
   });
 
   const setToken = (value: string | null) => {
@@ -30,7 +51,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const isAuthenticated = !!token;
 
-  // Sync logout/login across tabs
+  // Auto logout when token expires
+  useEffect(() => {
+    if (!token) return;
+
+    const exp = getTokenExpiration(token);
+    if (!exp) return;
+
+    const timeout = exp - Date.now();
+
+    if (timeout <= 0) {
+      logout();
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      logout();
+    }, timeout);
+
+    return () => clearTimeout(timer);
+  }, [token]);
+
+  // Sync login/logout across tabs
   useEffect(() => {
     const handleStorage = (event: StorageEvent) => {
       if (event.key === "token") {
