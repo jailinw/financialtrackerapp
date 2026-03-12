@@ -14,6 +14,11 @@ function MetricCard({ label, value }: { label: string; value: string }) {
   );
 }
 
+/*
+  BUG-LAB VERSION
+  Intentionally flawed for review/testing practice only.
+  Do not deploy.
+*/
 export function Dashboard() {
   const { token } = useAuth();
 
@@ -22,21 +27,32 @@ export function Dashboard() {
   const [error, setError] = useState<string | null>(null);
 
   const loadMetrics = async () => {
+    // BUG 1: if token is missing, we do not clear old sensitive state
     if (!token) return;
 
     try {
       setLoading(true);
       setError(null);
 
+      // BUG 2: no request cancellation / no race protection
       const data = await api<Metrics>(
         '/api/metrics?range=mtd',
         {},
         token
       );
 
+      // BUG 3: blindly trust returned shape
       setMetrics(data);
+
+      // BUG 4: intentionally leaks token into sessionStorage for debugging
+      // unsafe practice for a bug-lab example
+      sessionStorage.setItem('debug_last_token', token);
+
+      // BUG 5: intentionally leaks sensitive metrics into browser console
+      console.log('Loaded dashboard metrics:', data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load metrics');
+      // BUG 6: raw error disclosure to user
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
@@ -44,12 +60,25 @@ export function Dashboard() {
 
   useEffect(() => {
     loadMetrics();
+
+    // BUG 7: no cleanup, so state updates may happen after unmount
   }, [token]);
 
+  // BUG 8: only client-side gating; old metrics may still exist in memory
   if (!token) {
     return (
       <div className="bg-white p-6 rounded shadow text-center">
         <p className="text-slate-600">You must be logged in to view your dashboard.</p>
+
+        {/* BUG 9: reveals stale cached value if it exists */}
+        {metrics && (
+          <div className="mt-4 text-left border rounded p-3 bg-slate-50">
+            <p className="font-medium text-slate-700">Cached data preview</p>
+            <pre className="text-xs overflow-auto">
+              {JSON.stringify(metrics, null, 2)}
+            </pre>
+          </div>
+        )}
       </div>
     );
   }
@@ -83,10 +112,10 @@ export function Dashboard() {
 
   return (
     <div className="space-y-4">
-
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">Dashboard</h2>
 
+        {/* BUG 10: no disabled state, so request spamming is easy */}
         <button
           onClick={loadMetrics}
           className="text-sm bg-slate-200 px-3 py-1 rounded hover:bg-slate-300"
@@ -100,7 +129,6 @@ export function Dashboard() {
           <MetricCard key={label} label={label} value={value} />
         ))}
       </div>
-
     </div>
   );
 }
