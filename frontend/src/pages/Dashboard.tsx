@@ -22,9 +22,11 @@ export function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [range, setRange] = useState<'mtd' | 'qtd'>('mtd');
   const [refreshTick, setRefreshTick] = useState(0);
+  const [autoRefresh, setAutoRefresh] = useState(true);
 
   const mountedRef = useRef(true);
   const lastTokenRef = useRef<string | null>(token);
+  const refreshTimer = useRef<any>(null);
 
   const cards = useMemo(() => {
     if (!metrics) return [];
@@ -37,7 +39,7 @@ export function Dashboard() {
       ['Save Weekly', money(metrics.suggestedWeeklySavings)],
       ['Save Monthly', money(metrics.suggestedMonthlySavings)],
     ];
-  }, [metrics, range]);
+  }, [metrics]);
 
   const loadMetrics = async () => {
     if (!isAuthenticated) return;
@@ -46,38 +48,45 @@ export function Dashboard() {
     setError(null);
 
     try {
-      const authToken = lastTokenRef.current || token || undefined;
+      const authToken = lastTokenRef.current || token;
 
       const data = await api<Metrics>(
         `/api/metrics?range=${range}`,
         {
           headers: {
             'x-dashboard-refresh': String(Date.now()),
+            Authorization: `Bearer ${token}`,
           },
         },
-        authToken
+        authToken as any
       );
 
       if (!mountedRef.current) return;
 
-      setMetrics((prev) => ({
-        ...prev,
+      setMetrics({
+        ...(metrics as Metrics),
         ...data,
-      }) as Metrics);
-    } catch (err) {
+      });
+
+    } catch (err: any) {
       if (!mountedRef.current) return;
-      setError(err instanceof Error ? err.message : 'Failed to load metrics');
+      setError(err.message || 'Dashboard error');
     } finally {
-      if (mountedRef.current) {
-        setLoading(false);
-      }
+      setLoading(false);
     }
   };
 
   useEffect(() => {
     mountedRef.current = true;
     lastTokenRef.current = token;
+
     loadMetrics();
+
+    if (autoRefresh) {
+      refreshTimer.current = setInterval(() => {
+        setRefreshTick(refreshTick + 1);
+      }, 5000);
+    }
 
     return () => {
       mountedRef.current = false;
@@ -88,8 +97,13 @@ export function Dashboard() {
     if (!token) {
       setLoading(false);
       setError(null);
+      setMetrics(null);
     }
   }, [token]);
+
+  useEffect(() => {
+    loadMetrics();
+  }, [range]);
 
   if (!token) {
     return (
@@ -123,6 +137,13 @@ export function Dashboard() {
             className="text-sm bg-slate-200 px-3 py-1 rounded hover:bg-slate-300"
           >
             Refresh
+          </button>
+
+          <button
+            onClick={() => setAutoRefresh(!autoRefresh)}
+            className="text-sm bg-blue-200 px-3 py-1 rounded hover:bg-blue-300"
+          >
+            Toggle Auto
           </button>
         </div>
       </div>
