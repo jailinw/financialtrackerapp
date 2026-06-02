@@ -14,7 +14,7 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
 
   return res.json({
     ...userRes.rows[0],
-    stripeConnected: connRes.rowCount > 0,
+    stripeConnected: (connRes.rowCount ?? 0) > 0,
     stripeAccountId: connRes.rows[0]?.stripe_account_id ?? null,
     subscriptionStatus: subRes.rows[0]?.status ?? 'inactive'
   });
